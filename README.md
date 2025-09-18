@@ -1,2 +1,0 @@
-# MIDI-STEP-SEQUENCER
-Diplomarbeit
