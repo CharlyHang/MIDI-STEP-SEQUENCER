@@ -4,6 +4,7 @@
 //SDA = Pin 18
 U8G2_SSD1306_128X32_UNIVISION_F_SW_I2C u8g2(U8G2_R0, 19, 18, U8X8_PIN_NONE);
 
+int presetPageMax = 12;
 const int BUTTON_PIN = 22;
 
 const int BUTTON2_PIN = 23;
@@ -21,7 +22,7 @@ void setup(void) {
 
 
 void loop(void) {
-  if (digitalRead(BUTTON_PIN)) {
+  if (digitalRead(BUTTON_PIN)&& presetNumber < presetPageMax) {
     presetNumber++;
 
     char Ausgabe[20];
