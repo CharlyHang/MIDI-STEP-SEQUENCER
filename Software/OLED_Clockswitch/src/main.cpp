@@ -9,11 +9,6 @@
 #define LED3 26
 
 
-#define SDA_PIN 13
-#define SCL_PIN 25
-
-
-U8G2_SSD1306_128X32_UNIVISION_F_SW_I2C u8g2(U8G2_R0, SDA_PIN, SCL_PIN, U8X8_PIN_NONE);
 
 
 int counter = 0;
@@ -27,8 +22,7 @@ void setup() {
   pinMode(LED3, OUTPUT);
   Serial.begin(9600);
 
-  u8g2.begin();
-  u8g2.setFont(u8g2_font_ncenB08_tr);  
+  
 
  
 
@@ -75,10 +69,7 @@ void loop() {
     while(digitalRead(ClockButtonSwitch) == HIGH);
   }
 
- 
-  u8g2.clearBuffer();
-  u8g2.drawStr(0, 10, "Hallo OLED");
-  u8g2.sendBuffer();
+  
   
 }
 
