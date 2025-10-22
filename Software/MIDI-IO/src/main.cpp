@@ -52,7 +52,7 @@ void loop() {
         break;
     }
     Serial.println("Nachricht weitergeleitet");
-    Index = (Index == BUFFER_SIZE) ? 0 : Index++;
+    Index = (Index == BUFFER_SIZE - 1) ? 0 : Index++;
   }
 
 }
