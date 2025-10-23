@@ -6,11 +6,7 @@
 //SDA = Pin 18
 U8G2_SSD1306_128X32_UNIVISION_F_SW_I2C u8g2(U8G2_R0, 19, 18, U8X8_PIN_NONE);
 
-
 #define ClockButtonSwitch 12
-
-
-//Einbau von OLED mit u8g2 fehlt, mit Adafruit hat funktioniert
 
 #define LED1 32
 #define LED2 27
@@ -23,7 +19,6 @@ const char* ClockStates[3] = {"MIDI", "Intern", "Analog"}; //analog, intern, mid
 const char* Ausgabe;
 
 void setup() {
-  //ClockButtonSwitchSettup
   pinMode(ClockButtonSwitch, INPUT);
   pinMode(LED1, OUTPUT);
   pinMode(LED2, OUTPUT);
