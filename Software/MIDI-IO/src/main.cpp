@@ -13,9 +13,13 @@ struct MidiMessage {
   byte data2;
 };
 
-#define BUFFER_SIZE 32
-MidiMessage msg[BUFFER_SIZE];
+#define MAX_NOTE_SIZE 8
+#define MAX_STEP_SIZE 32
+MidiMessage msg[MAX_NOTE_SIZE][MAX_STEP_SIZE];
+int Note = 0;
 int Index  = 0;
+unsigned long start = 0, stop = 0;
+bool read = false;
 
 void setup() {
   Serial.begin(9600);
@@ -25,34 +29,54 @@ void setup() {
   Serial.println("Bereit für MIDI-Signale!");
 }
 
+
 void loop() {
-  if (MIDI.read()) {
-    msg[Index].type = MIDI.getType();
-    msg[Index].channel = MIDI.getChannel();
-    msg[Index].data1 = MIDI.getData1();
-    msg[Index].data2 = MIDI.getData2();
 
-    Serial.print("Empfangen -> Typ: ");
-    Serial.print(msg[Index].type);
-    Serial.print(" | Kanal: ");
-    Serial.print(msg[Index].channel);
-    Serial.print(" | Data1: ");
-    Serial.print(msg[Index].data1);
-    Serial.print(" | Data2: ");
-    Serial.println(msg[Index].data2);
+  Serial.print("STEP ");
+  Serial.print(Index+1);
+  Serial.println(":");
 
-    switch (msg[Index].type) {
-      case midi::NoteOn:
-        MIDI.sendNoteOn(msg[Index].data1, msg[Index].data2, msg[Index].channel);
-        break;
-      case midi::NoteOff:
-        MIDI.sendNoteOff(msg[Index].data1, msg[Index].data2, msg[Index].channel);
-        break;
-      default:
-        break;
-    }
-    Serial.println("Nachricht weitergeleitet");
-    Index = (Index == BUFFER_SIZE - 1) ? 0 : Index++;
+  while (!MIDI.read()) {
+    //Warten bis eine Note gespielt wurde
   }
 
+  start = millis();
+  stop = start;
+  read = true; // Um die erste Note noch zu lesen
+  while(stop - start <= 3000){
+    if(MIDI.read() || read && Note != MAX_NOTE_SIZE - 1){
+      read = false;
+      msg[Note][Index].type = MIDI.getType();
+      msg[Note][Index].channel = MIDI.getChannel();
+      msg[Note][Index].data1 = MIDI.getData1();
+      msg[Note][Index].data2 = MIDI.getData2();
+
+      Serial.print("Empfangen -> Typ: ");
+      Serial.print(msg[Note][Index].type);
+      Serial.print(" | Kanal: ");
+      Serial.print(msg[Note][Index].channel);
+      Serial.print(" | Data1: ");
+      Serial.print(msg[Note][Index].data1);
+      Serial.print(" | Data2: ");
+      Serial.println(msg[Note][Index].data2);
+
+      switch (msg[Note][Index].type) {
+        case midi::NoteOn:
+          MIDI.sendNoteOn(msg[Note][Index].data1, msg[Note][Index].data2, msg[Note][Index].channel);
+          break;
+        case midi::NoteOff:
+          MIDI.sendNoteOff(msg[Note][Index].data1, msg[Note][Index].data2, msg[Note][Index].channel);
+          break;
+        default:
+          break;
+      }
+      Serial.println("Nachricht weitergeleitet");
+      Note = (Note == MAX_NOTE_SIZE - 1) ? 0 : Note + 1;
+      stop = millis();
+    } else if (MIDI.read() || read && Note != MAX_NOTE_SIZE - 1){
+      Serial.println("Die maximale Notenanzahl fuer einen Step wurde erreicht!");
+    }
+  }
+  Note = 0;
+  Index = (Index == MAX_STEP_SIZE - 1) ? 0 : Index + 1;
 }
