@@ -17,7 +17,7 @@ struct MidiMessage {
 #define MAX_STEP_SIZE 32
 MidiMessage msg[MAX_NOTE_SIZE][MAX_STEP_SIZE];
 int Note = 0;
-int Index  = 0;
+int Step  = 0;
 unsigned long start = 0;
 unsigned long stop = 0;
 bool first = false;
@@ -34,7 +34,7 @@ void setup() {
 void loop() {
 
   Serial.print("STEP ");
-  Serial.print(Index+1);
+  Serial.print(Step+1);
   Serial.println(":");
 
   while (!MIDI.read()) {
@@ -49,26 +49,26 @@ void loop() {
   
       if ((hasMessage || first) && Note != MAX_NOTE_SIZE - 1) {
         first = false;
-        msg[Note][Index].type = MIDI.getType();
-        msg[Note][Index].channel = MIDI.getChannel();
-        msg[Note][Index].data1 = MIDI.getData1();
-        msg[Note][Index].data2 = MIDI.getData2();
+        msg[Note][Step].type = MIDI.getType();
+        msg[Note][Step].channel = MIDI.getChannel();
+        msg[Note][Step].data1 = MIDI.getData1();
+        msg[Note][Step].data2 = MIDI.getData2();
 
         Serial.print("Empfangen -> Typ: ");
-        Serial.print(msg[Note][Index].type);
+        Serial.print(msg[Note][Step].type);
         Serial.print(" | Kanal: ");
-        Serial.print(msg[Note][Index].channel);
+        Serial.print(msg[Note][Step].channel);
         Serial.print(" | Data1: ");
-        Serial.print(msg[Note][Index].data1);
+        Serial.print(msg[Note][Step].data1);
         Serial.print(" | Data2: ");
-        Serial.println(msg[Note][Index].data2);
+        Serial.println(msg[Note][Step].data2);
 
-        switch (msg[Note][Index].type) {
+        switch (msg[Note][Step].type) {
           case midi::NoteOn:
-            MIDI.sendNoteOn(msg[Note][Index].data1, msg[Note][Index].data2, msg[Note][Index].channel);
+            MIDI.sendNoteOn(msg[Note][Step].data1, msg[Note][Step].data2, msg[Note][Step].channel);
             break;
           case midi::NoteOff:
-            MIDI.sendNoteOff(msg[Note][Index].data1, msg[Note][Index].data2, msg[Note][Index].channel);
+            MIDI.sendNoteOff(msg[Note][Step].data1, msg[Note][Step].data2, msg[Note][Step].channel);
             break;
           default:
             break;
@@ -81,5 +81,5 @@ void loop() {
       stop = millis();
   }
   Note = 0;
-  Index = (Index == MAX_STEP_SIZE - 1) ? 0 : Index + 1;
+  Step = (Step == MAX_STEP_SIZE - 1) ? 0 : Step + 1;
 }
