@@ -27,6 +27,7 @@ void setup() {
   Serial.println("ESP32 MIDI IN/OUT gestartet...");
   MIDIserial.begin(31250, SERIAL_8N1, 17, 16);
   MIDI.begin(MIDI_CHANNEL_OMNI);
+  MIDI.turnThruOff();
   Serial.println("Bereit für MIDI-Signale!");
 }
 
