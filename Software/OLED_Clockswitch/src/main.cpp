@@ -6,7 +6,7 @@
 //SDA = Pin 18
 U8G2_SSD1306_128X32_UNIVISION_F_SW_I2C u8g2(U8G2_R0, 19, 18, U8X8_PIN_NONE);
 
-#define ClockButtonSwitch 12
+#define ClockButtonSwitch 33
 
 #define LED1 32
 #define LED2 27
@@ -27,6 +27,10 @@ void setup() {
 
   u8g2.begin();
   u8g2.setFont(u8g2_font_6x13B_t_cyrillic);  
+  Ausgabe = "Idle";
+  u8g2.clearBuffer();
+  u8g2.drawStr(12, 25, Ausgabe);
+  u8g2.sendBuffer();
 }
 
 void ClockCount(int counter) {
@@ -35,7 +39,6 @@ void ClockCount(int counter) {
     digitalWrite(LED1, HIGH);
     digitalWrite(LED2, LOW);
     digitalWrite(LED3, LOW);
-
 
     Ausgabe = ClockStates[0];
     u8g2.clearBuffer();
@@ -73,7 +76,7 @@ void loop() {
   if(digitalRead(ClockButtonSwitch) == HIGH){
     ClockCount(counter);
     counter++;
+    delay(300);
     while(digitalRead(ClockButtonSwitch) == HIGH);
   }
 }
-
