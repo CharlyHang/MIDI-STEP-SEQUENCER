@@ -13,7 +13,7 @@ struct MidiMessage {
   byte data2;
 };
 
-#define MAX_NOTE_SIZE 8
+#define MAX_NOTE_SIZE 32
 #define MAX_STEP_SIZE 32
 MidiMessage msg[MAX_NOTE_SIZE][MAX_STEP_SIZE];
 int Note = 0;
