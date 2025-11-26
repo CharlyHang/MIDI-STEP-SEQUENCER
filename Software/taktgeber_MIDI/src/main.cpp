@@ -67,7 +67,7 @@ void loop() {
 
   // Optional: Debug alle 5s
   static unsigned long lastDbg = 0;
-  if (millis() - lastDbg > 5000) {
+  if (millis() - lastDbg > 100) {
     lastDbg = millis();
     Serial.print("clockCount=");
     Serial.println(clockCount);
