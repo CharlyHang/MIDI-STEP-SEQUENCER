@@ -15,85 +15,138 @@ struct MidiMessage {
 };
 
 #define MAX_NOTE_SIZE 32
-#define MAX_STEP_SIZE 32
+#define MAX_STEP_SIZE 16
 #define Presets 8
 #define Presetpage 10
 MidiMessage msg[MAX_NOTE_SIZE][MAX_STEP_SIZE];
 int Note = 0;
 int Step  = 0;
-const unsigned long INACTIVITY_MS = 1000;
+const unsigned long INACTIVITY_MS = 300;
 unsigned long last_Received = 0;
 unsigned long stop = 0;
 bool first = false;
 
-int Preset_Button1 = 19;
+const uint8_t NUM_PRESETS = 4;
+const uint8_t presetPins[NUM_PRESETS] = {19, 18, 22, 23}; // Beispiel-Pins, anpassen
 
 const unsigned long DEBOUNCE_MS = 50;
 int lastButtonState = LOW;
 unsigned long lastButtonChange = 0;
 
-// ----- EEPROM Speicherung -----
-void saveSequenceToEEPROM() {
-  size_t needed = sizeof(msg);
-  Serial.print("Benötigte Bytes zum Speichern: ");
-  Serial.println(needed);
+const size_t SEQ_BYTES = sizeof(msg);                 // Bytes per sequence
+const size_t TOTAL_EEPROM_BYTES = SEQ_BYTES * NUM_PRESETS; // total
 
-  if (!EEPROM.begin((int)needed)) {
+
+// returns preset index (0..NUM_PRESETS-1) if pressed (debounced), else -1
+int readWhichPresetPressed() {
+  for (int i = 0; i < NUM_PRESETS; ++i) {
+    if(digitalRead(presetPins[i])){
+      return i;
+    }
+  }
+  return -1;
+}
+// ---------- EEPROM: save/load ----------
+// Ensure EEPROM.begin(TOTAL_EEPROM_BYTES) is called before using these functions.
+// Writes entire msg[][] to presetIndex slot.
+void saveSequenceToEEPROM(uint8_t presetIndex) {
+  if (presetIndex >= NUM_PRESETS) return;
+
+  if (!EEPROM.begin((int)TOTAL_EEPROM_BYTES)) {
     Serial.println("EEPROM.begin fehlgeschlagen!");
     return;
   }
 
-  Serial.println("Speichere Sequenz in EEPROM...");
-
+  size_t base = (size_t)presetIndex * SEQ_BYTES;
   const uint8_t* p = (const uint8_t*)msg;
-  for (size_t i = 0; i < needed; ++i) {
-    if (EEPROM.read((int)i) != p[i]) {
-      EEPROM.write((int)i, p[i]);
+  Serial.print("Speichere Preset ");
+  Serial.print(presetIndex);
+  Serial.print(" an Adresse ");
+  Serial.println(base);
+
+  for (size_t i = 0; i < SEQ_BYTES; ++i) {
+    if (EEPROM.read((int)(base + i)) != p[i]) {
+      EEPROM.write((int)(base + i), p[i]);
     }
   }
 
   if (EEPROM.commit()) {
-    Serial.println("Speichern erfolgreich!");
+    Serial.print("Preset ");
+    Serial.print(presetIndex);
+    Serial.println(" erfolgreich gespeichert.");
   } else {
-    Serial.println("Fehler beim EEPROM.commit!");
+    Serial.println("EEPROM.commit fehlgeschlagen!");
   }
 }
 
-// ----- EEPROM Laden & Abspielen -----
-void playSequenceFromEEPROM() {
-  size_t needed = sizeof(msg);
+// Loads preset into RAM msg[][]
+// If EEPROM unreadable, msg bleibt unverändert.
+bool loadSequenceFromEEPROM(uint8_t presetIndex) {
+  if (presetIndex >= NUM_PRESETS) return false;
 
-  if (!EEPROM.begin((int)needed)) {
+  if (!EEPROM.begin((int)TOTAL_EEPROM_BYTES)) {
     Serial.println("EEPROM.begin fehlgeschlagen!");
-    return;
+    return false;
   }
 
-  // Sequenz aus EEPROM laden
-  Serial.println("Lade Sequenz aus EEPROM...");
+  size_t base = (size_t)presetIndex * SEQ_BYTES;
   uint8_t* p = (uint8_t*)msg;
-  for (size_t i = 0; i < needed; ++i) {
-    p[i] = EEPROM.read((int)i);
-  }
 
-  Serial.println("Spiele gespeicherte Sequenz ab...");
-  
-  // Alle Steps abspielen
-  for (int s = 0; s < MAX_STEP_SIZE; s++) {
-    for (int n = 0; n < MAX_NOTE_SIZE; n++) {
+  Serial.print("Lade Preset ");
+  Serial.print(presetIndex);
+  Serial.print(" von Adresse ");
+  Serial.println(base);
+
+  for (size_t i = 0; i < SEQ_BYTES; ++i) {
+    p[i] = EEPROM.read((int)(base + i));
+  }
+  Serial.println("Laden abgeschlossen.");
+  return true;
+}
+
+
+// ---------- Playback ----------
+void playSequenceFromRAM(uint16_t stepDelayMs = 250) {
+  Serial.println("Starte Playback aus RAM...");
+  for (int s = 0; s < MAX_STEP_SIZE; ++s) {
+    for (int n = 0; n < MAX_NOTE_SIZE; ++n) {
       MidiMessage &m = msg[n][s];
       if (m.type == midi::NoteOn) {
         MIDI.sendNoteOn(m.data1, m.data2, m.channel);
       } else if (m.type == midi::NoteOff) {
         MIDI.sendNoteOff(m.data1, m.data2, m.channel);
       }
+      // andere Message-Typen ignorieren / erweitern falls nötig
     }
     Serial.print("Step ");
     Serial.print(s + 1);
     Serial.println(" abgespielt.");
-    delay(250); // kurze Pause zwischen Steps
+    delay(stepDelayMs);
   }
+  Serial.println("Playback fertig.");
+}
 
-  Serial.println("Sequenz komplett abgespielt.");
+// Combines load + play
+void playSequenceFromPreset(uint8_t presetIndex) {
+  if (loadSequenceFromEEPROM(presetIndex)) {
+    playSequenceFromRAM();
+  } else {
+    Serial.println("Fehler beim Laden, Playback abgebrochen.");
+  }
+}
+
+
+
+void clearSequence() {
+  for (int s = 0; s < MAX_STEP_SIZE; s++) {
+    for (int n = 0; n < MAX_NOTE_SIZE; n++) {
+      msg[n][s].type = 0;
+      msg[n][s].channel = 0;
+      msg[n][s].data1 = 0;
+      msg[n][s].data2 = 0;
+    }
+  }
+  Serial.println("Sequenz im RAM wurde gelöscht (alle Werte = 0).");
 }
 
 void setup() {
@@ -103,7 +156,7 @@ void setup() {
   MIDI.begin(MIDI_CHANNEL_OMNI);
   MIDI.turnThruOff(); // Für keine doppelte Signale
   Serial.println("Bereit für MIDI-Signale!");
-  pinMode(Preset_Button1, INPUT);
+  for(int i = 0; i < NUM_PRESETS; i++) pinMode(presetPins[i], INPUT);
 }
 
 
@@ -113,16 +166,20 @@ void loop() {
   Serial.print(Step+1);
   Serial.println(":");
 
-  // Wenn Button gedrückt wird, bevor ein Step fertig ist -> gespeicherte Sequenz abspielen
-  if (digitalRead(Preset_Button1)) {
-    Serial.println("Button gedrückt -> gespeicherte Sequenz abspielen...");
-    playSequenceFromEEPROM();
-    delay(300);
-    return; // zurück zum Anfang der Loop
-  }
 
-  while (!MIDI.read() || MIDI.getType() == 254) {
+
+  while (!MIDI.read() || MIDI.getType() == 254 || MIDI.getType() == 255) {
     //Warten bis eine Note gespielt wurde
+    // Wenn Button gedrückt wird, bevor ein Step fertig ist -> gespeicherte Sequenz abspielen
+    int presetpressed = readWhichPresetPressed();
+      if(presetpressed >= 0){
+      Serial.print("Preset-Button ");
+      Serial.print(presetpressed);
+      Serial.println(" gedrückt -> gespeicherte Sequenz abspielen...");
+      playSequenceFromPreset((uint8_t)presetpressed);
+      delay(300);
+      return;
+      }
   }
 
   last_Received = millis();
@@ -130,7 +187,7 @@ void loop() {
   while(millis() - last_Received <= INACTIVITY_MS){
      bool hasMessage = MIDI.read();  // <-- nur einmal pro Durchlauf
   
-      if ((hasMessage || first) && Note != MAX_NOTE_SIZE - 1 && MIDI.getType() != 254) {
+      if ((hasMessage || first) && Note != MAX_NOTE_SIZE - 1 && MIDI.getType() != 254 && MIDI.getType() != 255) {
         last_Received = millis();
         first = false;
         msg[Note][Step].type = MIDI.getType();
@@ -171,12 +228,15 @@ void loop() {
     Serial.println("LETZTER STEP erreicht. Drücke Button (HIGH) um zu speichern...");
 
     while (true) {
-      MIDI.read(); // MIDI weiter lesen, um Buffer leer zu halten
-      if (digitalRead(Preset_Button1)) {
-        Serial.println("Button gedrueckt -> Speichern läuft...");
-        saveSequenceToEEPROM();
-        Serial.println("Sequenz gespeichert. Weiter mit Step 1.");
-        delay(300); // Entprellen
+      MIDI.read(); // MIDI weiterverarbeiten
+      int which = readWhichPresetPressed();
+      if (which >= 0) {
+        Serial.print("Preset ");
+        Serial.print(which);
+        Serial.println(" ausgewählt -> speichern...");
+        saveSequenceToEEPROM((uint8_t)which);
+        clearSequence();
+        delay(300);
         break;
       }
     }
