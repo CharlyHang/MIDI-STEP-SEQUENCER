@@ -178,24 +178,50 @@ bool loadPresetFromFS(int page, int slot) {
 }
 
 // ---------------- Playback & RAM ----------------
-void playSequenceFromRAM(uint16_t stepDelayMs = 250) {
+void playSequenceFromRAM(uint16_t stepDelayMs = 10) {
   Serial.println("Starte Playback aus RAM...");
   digitalWrite(LED_PIN, HIGH);
+
   for (int s = 0; s < MAX_STEP_SIZE; ++s) {
+    Serial.printf("STEP %d:\n", s + 1);
+
     for (int n = 0; n < MAX_NOTE_SIZE; ++n) {
       MidiMessage &m = msg[n][s];
-      if (m.type == midi::NoteOn) {
-        MIDI.sendNoteOn(m.data1, m.data2, m.channel);
-      } else if (m.type == midi::NoteOff) {
-        MIDI.sendNoteOff(m.data1, m.data2, m.channel);
+
+      if (m.type == 0) continue; // leere Slots überspringen
+
+      // --- DEBUG-Ausgabe im gewünschten Format ---
+      Serial.printf(
+        "Gesendet -> Typ: %u | Kanal: %u | Data1: %u | Data2: %u\n",
+        (unsigned)m.type,
+        (unsigned)m.channel,
+        (unsigned)m.data1,
+        (unsigned)m.data2
+      );
+
+      // --- MIDI tatsächlich senden ---
+      switch (m.type) {
+        case midi::NoteOn:
+          MIDI.sendNoteOn(m.data1, m.data2, m.channel);
+          break;
+
+        case midi::NoteOff:
+          MIDI.sendNoteOff(m.data1, m.data2, m.channel);
+          break;
+
+        default:
+          // falls andere MIDI-Typen später hinzukommen
+          break;
       }
     }
-    Serial.printf("Step %d abgespielt.\n", s + 1);
+
     delay(stepDelayMs);
   }
+
   digitalWrite(LED_PIN, LOW);
   Serial.println("Playback fertig.");
 }
+
 
 void playSequenceFromPreset(int page, int slot) {
   if (loadPresetFromFS(page, slot)) {
@@ -247,7 +273,7 @@ int readWhichPresetPressed() {
 
 // ---------------- Setup & Loop ----------------
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   delay(10);
   Serial.println("ESP32-S3 Sequencer (Test) starting...");
 
