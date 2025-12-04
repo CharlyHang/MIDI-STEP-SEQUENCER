@@ -1,6 +1,7 @@
 /*
   Test-Sketch: 4 Presets, 1 Page, 16 Steps, LittleFS storage
   ESP32-S3 (HardwareSerial MIDI)
+  Playback is driven by external clock pulses on CLOCK_PIN (one HIGH pulse per beat).
 */
 
 #include <Arduino.h>
@@ -20,10 +21,9 @@ struct MidiMessage {
 };
 
 const int MAX_NOTE_SIZE = 32;
-const int MAX_STEP_SIZE = 16;     // <-- geändert für Test: 16 Steps
+const int MAX_STEP_SIZE = 16;     // Test: 16 Steps
 const int PRESETS_PER_PAGE = 4;   // 4 Preset-Buttons
 const int PAGES = 1;              // nur 1 Page in diesem Test
-// currentPage manuell setzbar; später ersetzt durch Encoder-Funktion
 int currentPage = 0;              // 0 .. (PAGES-1)
 
 MidiMessage msg[MAX_NOTE_SIZE][MAX_STEP_SIZE];
@@ -39,7 +39,7 @@ const uint8_t presetPins[PRESETS_PER_PAGE] = {19, 18, 22, 23}; // passe an deine
 const uint8_t LED_PIN = 2; // Status LED (optional)
 
 const unsigned long DEBOUNCE_MS = 50;
-uint16_t playbackStepDelayMs = 250; // playback delay per Step
+uint16_t playbackStepDelayMs = 250; // kept but playback controlled by external clock
 
 // ---------------- FS / Header ----------------
 const size_t SEQ_BYTES = sizeof(msg); // mit 32x16x4 = 2048
@@ -177,60 +177,49 @@ bool loadPresetFromFS(int page, int slot) {
   return true;
 }
 
-// ---------------- Playback & RAM ----------------
-void playSequenceFromRAM(uint16_t stepDelayMs = 10) {
-  Serial.println("Starte Playback aus RAM...");
+// ---------------- Playback (per step) ----------------
+// play all messages of a single step; prints debug raw format and sends MIDI
+void playStep(uint16_t stepIndex) {
+  if (stepIndex >= MAX_STEP_SIZE) return;
+  Serial.printf("PLAY STEP %d\n", stepIndex + 1);
   digitalWrite(LED_PIN, HIGH);
 
-  for (int s = 0; s < MAX_STEP_SIZE; ++s) {
-    Serial.printf("STEP %d:\n", s + 1);
+  for (int n = 0; n < MAX_NOTE_SIZE; ++n) {
+    MidiMessage &m = msg[n][stepIndex];
+    if (m.type == 0) continue; // skip empty slots
 
-    for (int n = 0; n < MAX_NOTE_SIZE; ++n) {
-      MidiMessage &m = msg[n][s];
+    // Debug output in requested format
+    Serial.printf("Gesendet -> Typ: %u | Kanal: %u | Data1: %u | Data2: %u\n",
+                  (unsigned)m.type, (unsigned)m.channel, (unsigned)m.data1, (unsigned)m.data2);
 
-      if (m.type == 0) continue; // leere Slots überspringen
-
-      // --- DEBUG-Ausgabe im gewünschten Format ---
-      Serial.printf(
-        "Gesendet -> Typ: %u | Kanal: %u | Data1: %u | Data2: %u\n",
-        (unsigned)m.type,
-        (unsigned)m.channel,
-        (unsigned)m.data1,
-        (unsigned)m.data2
-      );
-
-      // --- MIDI tatsächlich senden ---
-      switch (m.type) {
-        case midi::NoteOn:
-          MIDI.sendNoteOn(m.data1, m.data2, m.channel);
-          break;
-
-        case midi::NoteOff:
-          MIDI.sendNoteOff(m.data1, m.data2, m.channel);
-          break;
-
-        default:
-          // falls andere MIDI-Typen später hinzukommen
-          break;
-      }
+    // Actually send the MIDI message
+    switch (m.type) {
+      case midi::NoteOn:
+        MIDI.sendNoteOn(m.data1, m.data2, m.channel);
+        break;
+      case midi::NoteOff:
+        MIDI.sendNoteOff(m.data1, m.data2, m.channel);
+        break;
+      default:
+        // unsupported types ignored for now
+        break;
     }
-
-    delay(stepDelayMs);
   }
 
   digitalWrite(LED_PIN, LOW);
-  Serial.println("Playback fertig.");
 }
 
-
-void playSequenceFromPreset(int page, int slot) {
-  if (loadPresetFromFS(page, slot)) {
-    playSequenceFromRAM(playbackStepDelayMs);
-  } else {
-    Serial.println("Playback abgebrochen (ladefehler).");
-  }
+// wrapper that loads a preset and enters playback mode (clock-driven)
+bool startPresetPlayback(int page, int slot) {
+  Serial.printf("Playing preset request: page=%d slot=%d\n", page, slot);
+  if (!loadPresetFromFS(page, slot)) return false;
+  Serial.println("Preset geladen. Starte Playback (warte auf externen Clock pulses)...");
+  // Start at step 0, set playbackMode; external pulses will advance
+  Step = 0;
+  return true;
 }
 
+// ---------------- Clear RAM ----------------
 void clearSequenceRAM() {
   for (int s = 0; s < MAX_STEP_SIZE; ++s) {
     for (int n = 0; n < MAX_NOTE_SIZE; ++n) {
@@ -271,6 +260,26 @@ int readWhichPresetPressed() {
   return -1;
 }
 
+// ---------------- External clock (ISR) ----------------
+// Choose a pin available on your board for clock pulses:
+const uint8_t CLOCK_PIN = 34; // adjust if needed
+
+volatile bool clockPulse = false;
+volatile unsigned long lastClockMicros = 0;
+const unsigned long CLOCK_DEBOUNCE_US = 5000UL; // 5 ms debounce
+
+void IRAM_ATTR onClockISR() {
+  unsigned long now = micros();
+  // simple debounce in ISR
+  if (now - lastClockMicros > CLOCK_DEBOUNCE_US) {
+    lastClockMicros = now;
+    clockPulse = true;
+  }
+}
+
+// ---------------- Playback mode flag ----------------
+bool playbackMode = false; // when true, external clock advances playback steps
+
 // ---------------- Setup & Loop ----------------
 void setup() {
   Serial.begin(9600);
@@ -290,120 +299,154 @@ void setup() {
   setupButtons();
   clearSequenceRAM();
 
+  // Clock pin setup and attach ISR (external short HIGH pulses)
+  pinMode(CLOCK_PIN, INPUT_PULLDOWN); // change to INPUT/INPUT_PULLUP as your wiring requires
+  attachInterrupt(digitalPinToInterrupt(CLOCK_PIN), onClockISR, RISING);
+
   Serial.printf("Config: %d Presets/Page, %d Pages, SEQ_BYTES=%u\n", PRESETS_PER_PAGE, PAGES, (unsigned)SEQ_BYTES);
   Serial.printf("Using currentPage = %d (manuell setzbar im Code)\n", currentPage);
 }
 
 void loop() {
-  Serial.print("STEP ");
-  Serial.print(Step + 1);
-  Serial.println(":");
+  // If not in playbackMode, run the recording/step-capture logic (your existing behavior)
+  if (!playbackMode) {
+    Serial.print("STEP ");
+    Serial.print(Step + 1);
+    Serial.println(":");
 
-  // Quick: check preset pressed before waiting for MIDI start
-  int presetPressed = readWhichPresetPressed();
-  if (presetPressed >= 0) {
-    if (Step == MAX_STEP_SIZE - 1) {
-      Serial.printf("Preset %d gedrückt am letzten Step -> speichern (page %d)...\n", presetPressed, currentPage);
-      if (savePresetToFS(currentPage, presetPressed)) clearSequenceRAM();
-      delay(300);
-      Step = 0; Note = 0;
-      return;
-    } else {
-      Serial.printf("Preset %d gedrückt -> Play (page %d)...\n", presetPressed, currentPage);
-      playSequenceFromPreset(currentPage, presetPressed);
-      delay(300);
-      return;
-    }
-  }
-
-  // wait for first valid MIDI message (ignore Active Sensing 254/255)
-  while (!MIDI.read() || MIDI.getType() == 254 || MIDI.getType() == 255) {
-    // check preset during waiting too
-    int p = readWhichPresetPressed();
-    if (p >= 0) {
+    // Quick: check preset pressed before waiting for MIDI start
+    int presetPressed = readWhichPresetPressed();
+    if (presetPressed >= 0) {
       if (Step == MAX_STEP_SIZE - 1) {
-        Serial.printf("Preset %d gedrückt am letzten Step -> speichern (page %d)...\n", p, currentPage);
-        if (savePresetToFS(currentPage, p)) clearSequenceRAM();
+        Serial.printf("Preset %d gedrückt am letzten Step -> speichern (page %d)...\n", presetPressed, currentPage);
+        if (savePresetToFS(currentPage, presetPressed)) clearSequenceRAM();
         delay(300);
         Step = 0; Note = 0;
         return;
       } else {
-        Serial.printf("Preset %d gedrückt -> Play (page %d)...\n", p, currentPage);
-        playSequenceFromPreset(currentPage, p);
+        // Start playback mode for that preset (clock-driven)
+        Serial.printf("Preset %d gedrückt -> Starte Playback (page %d)...\n", presetPressed, currentPage);
+        if (startPresetPlayback(currentPage, presetPressed)) {
+          playbackMode = true; // now wait for external clock pulses to advance steps
+        }
         delay(300);
         return;
       }
     }
-  }
 
-  last_Received = millis();
-  first = true;
-
-  while (millis() - last_Received <= INACTIVITY_MS) {
-    bool hasMessage = MIDI.read();
-
-    int pDuring = readWhichPresetPressed();
-    if (pDuring >= 0) {
-      Serial.printf("Preset %d gedrückt während Aufnahme -> Play (page %d)...\n", pDuring, currentPage);
-      playSequenceFromPreset(currentPage, pDuring);
-      delay(300);
-      return;
-    }
-
-    if ((hasMessage || first) && Note != MAX_NOTE_SIZE - 1) {
-      if (hasMessage && (MIDI.getType() == 254 || MIDI.getType() == 255)) {
-        // skip Active Sensing / invalid
-      } else {
-        last_Received = millis();
-        first = false;
-        msg[Note][Step].type = MIDI.getType();
-        msg[Note][Step].channel = MIDI.getChannel();
-        msg[Note][Step].data1 = MIDI.getData1();
-        msg[Note][Step].data2 = MIDI.getData2();
-
-        Serial.printf("Empfangen -> Typ: %u | Kanal: %u | Data1: %u | Data2: %u\n",
-                      msg[Note][Step].type, msg[Note][Step].channel,
-                      msg[Note][Step].data1, msg[Note][Step].data2);
-
-        switch (msg[Note][Step].type) {
-          case midi::NoteOn:
-            MIDI.sendNoteOn(msg[Note][Step].data1, msg[Note][Step].data2, msg[Note][Step].channel);
-            break;
-          case midi::NoteOff:
-            MIDI.sendNoteOff(msg[Note][Step].data1, msg[Note][Step].data2, msg[Note][Step].channel);
-            break;
-          default:
-            break;
+    // wait for first valid MIDI message (ignore Active Sensing 254/255)
+    while (!MIDI.read() || MIDI.getType() == 254 || MIDI.getType() == 255) {
+      // check preset during waiting too (allow starting playback even while idle)
+      int p = readWhichPresetPressed();
+      if (p >= 0) {
+        if (Step == MAX_STEP_SIZE - 1) {
+          Serial.printf("Preset %d gedrückt am letzten Step -> speichern (page %d)...\n", p, currentPage);
+          if (savePresetToFS(currentPage, p)) clearSequenceRAM();
+          delay(300);
+          Step = 0; Note = 0;
+          return;
+        } else {
+          Serial.printf("Preset %d gedrückt -> Starte Playback (page %d)...\n", p, currentPage);
+          if (startPresetPlayback(currentPage, p)) playbackMode = true;
+          delay(300);
+          return;
         }
-        Serial.println("Nachricht weitergeleitet");
-        Note = (Note == MAX_NOTE_SIZE - 1) ? 0 : Note + 1;
       }
-    } else if (hasMessage && Note == MAX_NOTE_SIZE - 1 && MIDI.getType() != 254) {
-      Serial.println("Die maximale Notenanzahl fuer einen Step wurde erreicht!");
     }
-  }
 
-  // end of capture window
-  Note = 0;
+    last_Received = millis();
+    first = true;
 
-  if (Step == MAX_STEP_SIZE - 1) {
-    Serial.println("LETZTER STEP erreicht. Drücke Preset-Button (HIGH) um zu speichern...");
+    while (millis() - last_Received <= INACTIVITY_MS) {
+      bool hasMessage = MIDI.read();
 
-    while (true) {
-      MIDI.read(); // keep MIDI flowing
-      int which = readWhichPresetPressed();
-      if (which >= 0) {
-        Serial.printf("Preset %d ausgewählt -> speichern (page %d)...\n", which, currentPage);
-        if (savePresetToFS(currentPage, which)) {
-          clearSequenceRAM();
-        }
+      int pDuring = readWhichPresetPressed();
+      if (pDuring >= 0) {
+        Serial.printf("Preset %d gedrückt während Aufnahme -> Play (page %d)...\n", pDuring, currentPage);
+        if (startPresetPlayback(currentPage, pDuring)) playbackMode = true;
         delay(300);
-        break;
+        return;
       }
-      // optional: add timeout to abort
+
+      if ((hasMessage || first) && Note != MAX_NOTE_SIZE - 1) {
+        if (hasMessage && (MIDI.getType() == 254 || MIDI.getType() == 255)) {
+          // skip Active Sensing / invalid
+        } else {
+          last_Received = millis();
+          first = false;
+          msg[Note][Step].type = MIDI.getType();
+          msg[Note][Step].channel = MIDI.getChannel();
+          msg[Note][Step].data1 = MIDI.getData1();
+          msg[Note][Step].data2 = MIDI.getData2();
+
+          Serial.printf("Empfangen -> Typ: %u | Kanal: %u | Data1: %u | Data2: %u\n",
+                        msg[Note][Step].type, msg[Note][Step].channel,
+                        msg[Note][Step].data1, msg[Note][Step].data2);
+
+          switch (msg[Note][Step].type) {
+            case midi::NoteOn:
+              MIDI.sendNoteOn(msg[Note][Step].data1, msg[Note][Step].data2, msg[Note][Step].channel);
+              break;
+            case midi::NoteOff:
+              MIDI.sendNoteOff(msg[Note][Step].data1, msg[Note][Step].data2, msg[Note][Step].channel);
+              break;
+            default:
+              break;
+          }
+          Serial.println("Nachricht weitergeleitet");
+          Note = (Note == MAX_NOTE_SIZE - 1) ? 0 : Note + 1;
+        }
+      } else if (hasMessage && Note == MAX_NOTE_SIZE - 1 && MIDI.getType() != 254) {
+        Serial.println("Die maximale Notenanzahl fuer einen Step wurde erreicht!");
+      }
+      // keep looping until inactivity window expires
     }
-    Step = 0;
-  } else {
-    Step++;
+
+    // end of capture window
+    Note = 0;
+
+    if (Step == MAX_STEP_SIZE - 1) {
+      Serial.println("LETZTER STEP erreicht. Drücke Preset-Button (HIGH) um zu speichern...");
+
+      while (true) {
+        MIDI.read(); // keep MIDI flowing
+        int which = readWhichPresetPressed();
+        if (which >= 0) {
+          Serial.printf("Preset %d ausgewählt -> speichern (page %d)...\n", which, currentPage);
+          if (savePresetToFS(currentPage, which)) {
+            clearSequenceRAM();
+          }
+          delay(300);
+          break;
+        }
+        // optional: add timeout to abort
+      }
+      Step = 0;
+    } else {
+      Step++;
+    }
+  } // end if (!playbackMode)
+
+  // ---------------- playbackMode handling: advance step when external clock pulse arrives ----------------
+  bool doPulse = false;
+  noInterrupts();
+  if (clockPulse) {
+    clockPulse = false;
+    doPulse = true;
   }
+  interrupts();
+
+  if (doPulse && playbackMode) {
+    // play current step
+    playStep(Step);
+
+    // advance step, wrap around
+    Step = (Step == MAX_STEP_SIZE - 1) ? 0 : Step + 1;
+
+    // optionally: if you want playback to stop automatically after one loop:
+    // if (Step == 0) playbackMode = false;
+  }
+
+  // small yield
+  delay(1);
 }
