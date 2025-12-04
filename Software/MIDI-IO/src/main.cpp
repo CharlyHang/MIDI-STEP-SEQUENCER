@@ -262,7 +262,7 @@ int readWhichPresetPressed() {
 
 // ---------------- External clock (ISR) ----------------
 // Choose a pin available on your board for clock pulses:
-const uint8_t CLOCK_PIN = 34; // adjust if needed
+const uint8_t CLOCK_PIN = 21; // adjust if needed
 
 volatile bool clockPulse = false;
 volatile unsigned long lastClockMicros = 0;
