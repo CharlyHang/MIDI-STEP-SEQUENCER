@@ -14,5 +14,4 @@ class OLED_Anzeige {
     protected:
         U8G2_SSD1306_128X32_UNIVISION_F_SW_I2C my_u8g2;
         String my_Text;
-        
 };
