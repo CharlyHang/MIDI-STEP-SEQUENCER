@@ -8,6 +8,8 @@
 #include <MIDI.h>
 #include <HardwareSerial.h>
 #include <LittleFS.h>
+#include "Stepanzeige.h"
+#include "Presetanzeige.h"
 
 HardwareSerial MIDIserial(2);
 MIDI_CREATE_INSTANCE(HardwareSerial, MIDIserial, MIDI);
@@ -27,6 +29,11 @@ const int PAGES = 1;              // nur 1 Page in diesem Test
 int currentPage = 0;              // 0 .. (PAGES-1)
 
 MidiMessage msg[MAX_NOTE_SIZE][MAX_STEP_SIZE];
+
+#define STEP_SCL 19
+#define STEP_SDA 20
+
+Step_Anzeige stepDisplay(STEP_SCL, STEP_SDA);
 
 int Note = 0;
 int Step = 0;
@@ -283,6 +290,7 @@ bool playbackMode = false; // when true, external clock advances playback steps
 // ---------------- Setup & Loop ----------------
 void setup() {
   Serial.begin(9600);
+  stepDisplay.initialize();
   delay(10);
   Serial.println("ESP32-S3 Sequencer (Test) starting...");
 
@@ -313,6 +321,8 @@ void loop() {
     Serial.print("STEP ");
     Serial.print(Step + 1);
     Serial.println(":");
+    stepDisplay.set_Step(Step);
+    stepDisplay.update();
 
     // Quick: check preset pressed before waiting for MIDI start
     int presetPressed = readWhichPresetPressed();
