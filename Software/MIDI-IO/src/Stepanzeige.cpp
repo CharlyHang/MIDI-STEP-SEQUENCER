@@ -8,6 +8,6 @@ void Step_Anzeige::set_Step(int Step){
 }
 
 void Step_Anzeige::display(){
-    my_Text = "Step:" + String(my_Step);
+    my_Text = "Step: " + String(my_Step);
     OLED_Anzeige::display();
 }

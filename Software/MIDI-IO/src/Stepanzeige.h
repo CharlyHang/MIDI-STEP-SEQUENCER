@@ -8,5 +8,6 @@ class Step_Anzeige: public OLED_Anzeige{
         void set_Step(int Step);
 
     private:
+        using OLED_Anzeige::set_Text;
         int my_Step = 0;
 };
