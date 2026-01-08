@@ -11,3 +11,7 @@ void Step_Anzeige::display(){
     my_Text = "Step: " + String(my_Step);
     OLED_Anzeige::display();
 }
+
+void Step_Anzeige::update(){
+    Step_Anzeige::display();
+}
