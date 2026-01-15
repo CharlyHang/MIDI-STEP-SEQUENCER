@@ -1,8 +1,7 @@
 #include "Anzeige.h"
 
-OLED_Anzeige::OLED_Anzeige(int SCL, int SDA) :my_u8g2(U8G2_R0, SCL, SDA, U8X8_PIN_NONE) {}
-
-void OLED_Anzeige::initialize(){
+OLED_Anzeige::OLED_Anzeige(int SCL, int SDA) :my_u8g2(U8G2_R0, SCL, SDA, U8X8_PIN_NONE)
+{
     my_u8g2.begin();
     my_u8g2.setFont(u8g2_font_6x13B_t_cyrillic);
 }

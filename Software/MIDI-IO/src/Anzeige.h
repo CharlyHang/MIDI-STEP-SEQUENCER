@@ -8,7 +8,6 @@ class OLED_Anzeige {
         OLED_Anzeige(int SCL, int SDA);
         ~OLED_Anzeige();
         void display();
-        void initialize();
         void set_Text(const String& Text);
 
     protected:

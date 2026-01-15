@@ -4,14 +4,12 @@ Preset_Anzeige::Preset_Anzeige(int SCL, int SDA, int CLK, int DT)
     :OLED_Anzeige(SCL, SDA),
     my_CLK(CLK),
     my_DT(DT)
-{}
-
-void Preset_Anzeige::initialize(){
-    OLED_Anzeige::initialize();
+{
     pinMode(my_CLK, INPUT);
     pinMode(my_DT, INPUT);
     lastStateCLK = digitalRead(my_CLK);
 }
+
 
 void Preset_Anzeige::update() {
     handleEncoder();

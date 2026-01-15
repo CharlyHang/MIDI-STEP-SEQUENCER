@@ -10,6 +10,7 @@
 #include <LittleFS.h>
 #include "Stepanzeige.h"
 #include "Presetanzeige.h"
+#include "Button.h"
 
 HardwareSerial MIDIserial(2);
 MIDI_CREATE_INSTANCE(HardwareSerial, MIDIserial, MIDI);
@@ -292,7 +293,6 @@ bool playbackMode = false; // when true, external clock advances playback steps
 // ---------------- Setup & Loop ----------------
 void setup() {
   Serial.begin(9600);
-  stepDisplay.initialize();
   delay(10);
   Serial.println("ESP32-S3 Sequencer (Test) starting...");
 
@@ -369,7 +369,7 @@ void loop() {
     last_Received = millis();
     first = true;
 
-    while (Note_ONs == Note_OFFs || Note_ONs == 0) {
+    while (Note_ONs != Note_OFFs || Note_ONs == 0) {
       bool hasMessage = MIDI.read();
 
       int pDuring = readWhichPresetPressed();
@@ -413,7 +413,6 @@ void loop() {
       } else if (hasMessage && Note == MAX_NOTE_SIZE - 1 && MIDI.getType() != 254) {
         Serial.println("Die maximale Notenanzahl fuer einen Step wurde erreicht!");
       }
-      // keep looping until inactivity window expires
     }
 
     // end of capture window

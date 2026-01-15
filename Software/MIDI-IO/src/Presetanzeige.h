@@ -5,7 +5,6 @@ class Preset_Anzeige: public OLED_Anzeige{
     public:
         Preset_Anzeige(int SCL, int SDA, int CLK, int DT);
         ~Preset_Anzeige();
-        void initialize();
         void update();
         void set_maxPresetPage(int max_Page);
 
