@@ -11,6 +11,7 @@
 #include "Stepanzeige.h"
 #include "Presetanzeige.h"
 #include "Button.h"
+#include "PresetButton.h"
 
 HardwareSerial MIDIserial(2);
 MIDI_CREATE_INSTANCE(HardwareSerial, MIDIserial, MIDI);

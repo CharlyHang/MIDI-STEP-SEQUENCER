@@ -7,7 +7,7 @@ class Button {
         bool pressed();
         ~Button();
 
-    private:
+    protected:
         const int my_pin;
         int lastState = LOW;
         unsigned long lastChange = 0;
