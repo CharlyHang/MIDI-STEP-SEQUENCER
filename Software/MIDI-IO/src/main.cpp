@@ -37,6 +37,8 @@ Step_Anzeige stepDisplay(STEP_SCL, STEP_SDA);
 
 int Note = 0;
 int Step = 0;
+int Note_ONs = 0;
+int Note_OFFs = 0;
 
 const unsigned long INACTIVITY_MS = 300; // Aufnahmefenster pro Step
 unsigned long last_Received = 0;
@@ -367,7 +369,7 @@ void loop() {
     last_Received = millis();
     first = true;
 
-    while (millis() - last_Received <= INACTIVITY_MS) {
+    while (Note_ONs == Note_OFFs || Note_ONs == 0) {
       bool hasMessage = MIDI.read();
 
       int pDuring = readWhichPresetPressed();
@@ -396,9 +398,11 @@ void loop() {
           switch (msg[Note][Step].type) {
             case midi::NoteOn:
               MIDI.sendNoteOn(msg[Note][Step].data1, msg[Note][Step].data2, msg[Note][Step].channel);
+              Note_ONs++;
               break;
             case midi::NoteOff:
               MIDI.sendNoteOff(msg[Note][Step].data1, msg[Note][Step].data2, msg[Note][Step].channel);
+              Note_OFFs++;
               break;
             default:
               break;
