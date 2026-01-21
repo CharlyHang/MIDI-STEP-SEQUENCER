@@ -3,7 +3,6 @@
 class PresetButton: public Button {
     public:
         PresetButton(const int* pins, int maxPresets);
-        ~PresetButton();
         int whichPressed();
 
     private:

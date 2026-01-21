@@ -5,7 +5,6 @@ class Button {
     public:
         Button(int pin);
         bool pressed();
-        ~Button();
 
     protected:
         const int my_pin;

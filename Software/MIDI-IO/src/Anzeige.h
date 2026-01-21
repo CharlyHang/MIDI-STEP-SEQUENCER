@@ -6,7 +6,6 @@
 class OLED_Anzeige {
     public:
         OLED_Anzeige(int SCL, int SDA);
-        ~OLED_Anzeige();
         void display();
         void set_Text(const String& Text);
 

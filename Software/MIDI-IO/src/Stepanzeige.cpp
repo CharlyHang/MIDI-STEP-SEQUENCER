@@ -8,7 +8,11 @@ void Step_Anzeige::set_Step(int Step){
 }
 
 void Step_Anzeige::display(){
-    my_Text = "Step: " + String(my_Step);
+    if(my_Step <= 16){
+        my_Text = "Step: " + String(my_Step);
+    } else {
+        my_Text = "Speichern:";
+    }
     OLED_Anzeige::display();
 }
 

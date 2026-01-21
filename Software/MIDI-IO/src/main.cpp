@@ -32,8 +32,8 @@ int currentPage = 0;              // 0 .. (PAGES-1)
 
 MidiMessage msg[MAX_NOTE_SIZE][MAX_STEP_SIZE];
 
-#define STEP_SCL 19
-#define STEP_SDA 20
+#define STEP_SCL 4
+#define STEP_SDA 15
 
 Step_Anzeige stepDisplay(STEP_SCL, STEP_SDA);
 
@@ -51,6 +51,19 @@ const uint8_t LED_PIN = 2; // Status LED (optional)
 
 const unsigned long DEBOUNCE_MS = 50;
 uint16_t playbackStepDelayMs = 250; // kept but playback controlled by external clock
+
+// ---------------- Clock mode ----------------
+enum ClockMode {
+  CLOCK_EXTERNAL,
+  CLOCK_INTERNAL
+};
+
+// >>> HIER umschalten <<<
+ClockMode clockMode = CLOCK_INTERNAL; // oder CLOCK_EXTERNAL
+
+// ---------------- Internal clock ----------------
+unsigned long lastInternalStepMs = 0;
+const unsigned long INTERNAL_STEP_MS = 100; // z.B. 100 ms pro Step
 
 // ---------------- FS / Header ----------------
 const size_t SEQ_BYTES = sizeof(msg); // mit 32x16x4 = 2048
@@ -310,9 +323,13 @@ void setup() {
   setupButtons();
   clearSequenceRAM();
 
-  // Clock pin setup and attach ISR (external short HIGH pulses)
-  pinMode(CLOCK_PIN, INPUT_PULLDOWN); // change to INPUT/INPUT_PULLUP as your wiring requires
-  attachInterrupt(digitalPinToInterrupt(CLOCK_PIN), onClockISR, RISING);
+  if (clockMode == CLOCK_EXTERNAL) {
+    pinMode(CLOCK_PIN, INPUT_PULLDOWN);
+    attachInterrupt(digitalPinToInterrupt(CLOCK_PIN), onClockISR, RISING);
+    Serial.println("Clock Mode: EXTERNAL");
+  } else {
+    Serial.println("Clock Mode: INTERNAL");
+  }
 
   Serial.printf("Config: %d Presets/Page, %d Pages, SEQ_BYTES=%u\n", PRESETS_PER_PAGE, PAGES, (unsigned)SEQ_BYTES);
   Serial.printf("Using currentPage = %d (manuell setzbar im Code)\n", currentPage);
@@ -324,7 +341,7 @@ void loop() {
     Serial.print("STEP ");
     Serial.print(Step + 1);
     Serial.println(":");
-    stepDisplay.set_Step(Step);
+    stepDisplay.set_Step(Step + 1);
     stepDisplay.update();
 
     // Quick: check preset pressed before waiting for MIDI start
@@ -418,9 +435,14 @@ void loop() {
 
     // end of capture window
     Note = 0;
+    Note_ONs = 0;
+    Note_OFFs = 0;
 
     if (Step == MAX_STEP_SIZE - 1) {
       Serial.println("LETZTER STEP erreicht. Drücke Preset-Button (HIGH) um zu speichern...");
+      stepDisplay.set_Step(Step + 2);
+      stepDisplay.update();
+
 
       while (true) {
         MIDI.read(); // keep MIDI flowing
@@ -441,26 +463,38 @@ void loop() {
     }
   } // end if (!playbackMode)
 
-  // ---------------- playbackMode handling: advance step when external clock pulse arrives ----------------
-  bool doPulse = false;
-  noInterrupts();
-  if (clockPulse) {
-    clockPulse = false;
-    doPulse = true;
-  }
-  interrupts();
+ // ---------------- Playback handling ----------------
+  bool stepTrigger = false;
 
-  if (doPulse && playbackMode) {
-    // play current step
+  // ---- External Clock ----
+  if (clockMode == CLOCK_EXTERNAL) {
+    noInterrupts();
+    if (clockPulse) {
+      clockPulse = false;
+      stepTrigger = true;
+    }
+    interrupts();
+  }
+
+  // ---- Internal Clock ----
+  if (clockMode == CLOCK_INTERNAL) {
+    unsigned long now = millis();
+    if (now - lastInternalStepMs >= INTERNAL_STEP_MS) {
+      lastInternalStepMs = now;
+      stepTrigger = true;
+    }
+  }
+
+  if (stepTrigger && playbackMode) {
     playStep(Step);
 
-    // advance step, wrap around
-    Step = (Step == MAX_STEP_SIZE - 1) ? 0 : Step + 1;
-
-    // optionally: if you want playback to stop automatically after one loop:
-    // if (Step == 0) playbackMode = false;
+    if (Step == MAX_STEP_SIZE - 1) {
+      Step = 0;
+      playbackMode = false;   // <<< STOP nach 1 Loop
+    } else {
+      Step++;
+    }
   }
-
-  // small yield
+    // small yield
   delay(1);
 }
